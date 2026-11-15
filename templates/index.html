@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareVault — Unsecured Baseline Clinical Portal (Vulnerable Edition)</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="warning-strip">
+    ⚠️ UNSECURED BASELINE SYSTEM: INTENTIONALLY VULNERABLE TO SQL INJECTION, IDOR, XSS, MASS ASSIGNMENT &amp; PLAINTEXT HTTP
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="shield-icon" aria-hidden="true">&#x26A0;&#xFE0F;</span>
+      <div>
+        <h1>CareVault Baseline (Insecure Edition)</h1>
+        <p class="subtitle">Plaintext HTTP :5000 &bull; Unsalted MD5 &bull; No CSRF &bull; Raw SQL Concatenation &bull; Unescaped HTML (XSS)</p>
+      </div>
+    </div>
+
+    {% if user %}
+    <div class="session-bar">
+      <span class="badge role-badge">{{ user.role | upper }} &bull; {{ user.full_name }}</span>
+      <form method="post" action="/portal/logout" class="inline-form" style="display:inline;">
+        <button class="btn btn-danger btn-sm" type="submit">Sign Out</button>
+      </form>
+    </div>
+    {% endif %}
+  </header>
+
+  <main class="container">
+    {% if alert_message %}
+    <div class="alert {{ 'alert-success' if alert_kind == 'success' else 'alert-error' }}" role="alert">
+      {{ alert_message }}
+    </div>
+    {% endif %}
+
+    <!-- Live Vulnerability Demonstration Panel -->
+    <section class="vuln-panel">
+      <h3>&#x1F47E; Interactive Vulnerability Demonstration Console (Viva &amp; Testing Helper)</h3>
+      <p class="muted" style="margin-bottom: 0.5rem;">
+        Click any attack scenario below to trigger or test live vulnerabilities against this unsecured baseline:
+      </p>
+      <div class="vuln-grid">
+        <div class="vuln-item">
+          <strong>1. SQL Injection Auth Bypass (CWE-89)</strong>
+          <p>Bypasses authentication without a password using <code>' OR '1'='1' --</code>.</p>
+          <a href="/?demo_sqli=1" class="btn btn-primary btn-sm full-width" onclick="var el = document.getElementById('loginEmail'); if (el) { el.value = '\' OR \'1\'=\'1\' --'; document.getElementById('loginPassword').value = 'any_password'; return false; } else { window.location.href = '/?demo_sqli=1'; return false; }">Auto-Fill SQLi Login</a>
+        </div>
+
+        <div class="vuln-item">
+          <strong>2. Horizontal IDOR (CWE-639 / BOLA)</strong>
+          <p>Access Patient #6's private psychiatric diagnosis regardless of who is signed in.</p>
+          <a href="/?tab=records&record_id=2" class="btn btn-secondary btn-sm full-width">View Record #2 (Daniel)</a>
+        </div>
+
+        <div class="vuln-item">
+          <strong>3. Stored XSS Demo (CWE-79)</strong>
+          <p>Injects an alert script into the diagnosis field rendered via unescaped HTML.</p>
+          <button class="btn btn-outline btn-sm full-width" onclick="alert('XSS Demo: In the diagnosis field, insert <script>alert(document.cookie)<\/script> to execute arbitrary JavaScript in the victim\'s browser!')">Explain Stored XSS</button>
+        </div>
+
+        <div class="vuln-item">
+          <strong>4. Session Cookie Theft (CWE-1004)</strong>
+          <p>Reads the session cookie directly via JavaScript because <code>HttpOnly</code> is missing.</p>
+          <button class="btn btn-outline btn-sm full-width" onclick="alert('Stolen Document Cookie:\n' + (document.cookie || 'No active cookie. Sign in first!'))">Inspect document.cookie</button>
+        </div>
+
+        <div class="vuln-item">
+          <strong>5. Verbose Traceback Leak (CWE-209)</strong>
+          <p>Triggers an unhandled exception leaking Python traceback &amp; local variables.</p>
+          <a href="/crash" target="_blank" class="btn btn-danger btn-sm full-width">Trigger /crash (Debug Stack Trace)</a>
+        </div>
+      </div>
+    </section>
+
+    {% if single_record %}
+    <!-- IDOR Direct Record Inspection View -->
+    <div class="card" style="border: 2px solid #ef4444; background: #fff5f5; margin-bottom: 2rem;">
+      <h3 style="color: #b91c1c;">&#x26A0;&#xFE0F; IDOR Exploit Result: Displaying Confidential Clinical Record #{{ single_record.id }}</h3>
+      <p class="muted">Notice: No ownership or authorization check performed! Unrestricted access granted to confidential PHI!</p>
+      <table class="styled-table">
+        <tr><th>Record ID</th><td>#{{ single_record.id }}</td></tr>
+        <tr><th>Patient Name</th><td><strong>{{ single_record.patient_name }} (Patient ID #{{ single_record.patient_id }})</strong></td></tr>
+        <tr><th>Attending Doctor</th><td>{{ single_record.doctor_name }}</td></tr>
+        <tr><th>Severity Level</th><td><span class="badge">{{ single_record.severity }}</span></td></tr>
+        <tr><th>Diagnosis (Raw HTML / XSS)</th><td>{{ single_record.diagnosis | safe }}</td></tr>
+        <tr><th>Prescription</th><td>{{ single_record.prescription | safe }}</td></tr>
+        <tr><th>Confidential Notes</th><td>{{ single_record.clinical_notes | safe }}</td></tr>
+        <tr><th>Created At</th><td>{{ single_record.created_at }}</td></tr>
+      </table>
+      <div style="margin-top: 1rem;">
+        <a href="{{ '/?tab=' + active_tab if user else '/' }}" class="btn btn-outline btn-sm">Close Record View</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not user %}
+    <!-- Unauthenticated View: Login & Insecure Registration -->
+    <section class="auth-grid">
+      <div class="card">
+        <h2>Sign In (Vulnerable to SQL Injection)</h2>
+        <p class="muted">Query executed: <code>SELECT * FROM users WHERE email = '{email}' AND password_hash = '{md5(password)}'</code></p>
+        <form method="post" action="/portal/login">
+          <label for="loginEmail">Email Address (Try typing: <code>' OR '1'='1' --</code>)</label>
+          <input id="loginEmail" name="email" type="text" required
+                 value="{{ login_email }}" placeholder="dr.aisyah@carevault.local" />
+
+          <label for="loginPassword">Password</label>
+          <input id="loginPassword" name="password" type="password" required
+                 value="{{ login_password }}" placeholder="Enter password" />
+
+          <button class="btn btn-primary full-width" type="submit">Sign In</button>
+        </form>
+
+        <div class="demo-accounts">
+          <h3>Quick-Fill Demo Accounts</h3>
+          <div class="chip-row">
+            {% for key, info in demo_accounts.items() %}
+            <a href="/?demo={{ key }}" class="chip {{ 'active' if selected_demo == key else '' }}">{{ info[2] }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Registration (Vulnerable to Mass Assignment)</h2>
+        <p class="muted">Directly binds <code>role</code> from client form/JSON without schema validation.</p>
+        <form method="post" action="/portal/register">
+          <label for="regName">Full Legal Name</label>
+          <input id="regName" name="fullName" type="text" required placeholder="John Doe" />
+
+          <label for="regEmail">Email Address</label>
+          <input id="regEmail" name="email" type="email" required placeholder="john@example.com" />
+
+          <label for="regPhone">Contact Number</label>
+          <input id="regPhone" name="phone" type="tel" required placeholder="+6012-111-2233" />
+
+          <label for="regRole">Role (Mass Assignment: Change to 'admin' to gain admin access!)</label>
+          <select id="regRole" name="role">
+            <option value="patient">patient (Standard Outpatient)</option>
+            <option value="doctor">doctor (Medical Clinician)</option>
+            <option value="staff">staff (Front-Desk Reception)</option>
+            <option value="admin">admin (Full System Administrator!)</option>
+          </select>
+
+          <label for="regPassword">Password (Weak: Accepts '123' or 1 character)</label>
+          <input id="regPassword" name="password" type="password" required placeholder="Weak passwords accepted" />
+
+          <button class="btn btn-secondary full-width" type="submit">Register Account (Vulnerable)</button>
+        </form>
+      </div>
+    </section>
+
+    {% else %}
+    <!-- Authenticated Insecure Workspace -->
+    <section>
+      <div class="card" style="border-left: 4px solid #b91c1c;">
+        <h2>Signed in as: {{ user.full_name }} (Role: <code>{{ user.role }}</code>)</h2>
+        <p class="muted">Logged in via HTTP session. Session ID stored in plaintext cookie <code>cv_insecure_session</code> without <code>HttpOnly</code> or <code>Secure</code> flags.</p>
+      </div>
+
+      <nav class="tabs" aria-label="Portal Navigation">
+        <a href="/?tab=records" class="tab-btn {{ 'active' if active_tab == 'records' else '' }}">Clinical Records (IDOR &amp; XSS)</a>
+        <a href="/?tab=appointments" class="tab-btn {{ 'active' if active_tab == 'appointments' else '' }}">Appointments (No CSRF)</a>
+        {% if user.role == 'admin' %}
+        <a href="/?tab=admin" class="tab-btn {{ 'active' if active_tab == 'admin' else '' }}">Admin Database Users (MD5 Hashes)</a>
+        {% endif %}
+      </nav>
+
+      {% if active_tab == 'records' %}
+      <div class="card">
+        <h3>Search Records (Vulnerable to SQL Injection)</h3>
+        <form method="get" action="/">
+          <input type="hidden" name="tab" value="records" />
+          <label for="searchQ">Diagnosis Search Query</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input id="searchQ" name="q" type="text" value="{{ search_query }}" placeholder="e.g. Diabetes or try: ' UNION SELECT 99, 1, 1, email || ' | ' || password_hash, 'LEAK', 'HIGH', created_at FROM users --" />
+            <button class="btn btn-primary" type="submit">Search</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Create Clinical Record (Vulnerable to Stored XSS &amp; Missing CSRF)</h3>
+        <p class="muted">Notice: No CSRF token is required, and diagnosis/notes are saved without HTML entity encoding!</p>
+        <form method="post" action="/portal/records/create">
+          <label for="patSelect">Target Patient</label>
+          <select id="patSelect" name="patientId">
+            {% for pat in all_patients %}
+            <option value="{{ pat.id }}">#{{ pat.id }} &mdash; {{ pat.full_name }} ({{ pat.email }})</option>
+            {% endfor %}
+          </select>
+
+          <label for="recDiag">Diagnosis (Try typing: <code>&lt;script&gt;alert('Stored XSS!')&lt;/script&gt;</code>)</label>
+          <input id="recDiag" name="diagnosis" type="text" required placeholder="Clinical diagnosis" />
+
+          <label for="recPresc">Prescription</label>
+          <input id="recPresc" name="prescription" type="text" placeholder="Medication and dosage" />
+
+          <label for="recNotes">Clinical Notes</label>
+          <textarea id="recNotes" name="clinicalNotes" rows="3" placeholder="Consultation notes"></textarea>
+
+          <label for="recSev">Severity</label>
+          <select id="recSev" name="severity">
+            <option value="LOW">LOW</option>
+            <option value="MODERATE">MODERATE</option>
+            <option value="HIGH">HIGH</option>
+            <option value="CRITICAL">CRITICAL</option>
+          </select>
+
+          <button class="btn btn-primary" type="submit">Save Record (Unsanitized)</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>All Clinical Records in System (Overly Permissive)</h3>
+        <p class="muted">In a secure system, a patient only sees their own records. Here, all records can be queried!</p>
+        <table class="styled-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Patient</th>
+              <th>Doctor</th>
+              <th>Diagnosis (Rendered Raw | safe)</th>
+              <th>Severity</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>#{{ r.id }}</td>
+              <td>{{ r.patient_name }} (ID #{{ r.patient_id }})</td>
+              <td>{{ r.doctor_name }}</td>
+              <td>{{ r.diagnosis | safe }}</td>
+              <td><span class="badge">{{ r.severity }}</span></td>
+              <td>
+                <a href="/?tab=records&record_id={{ r.id }}" class="btn btn-secondary btn-sm">IDOR Inspect #{{ r.id }}</a>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="muted">No records found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% elif active_tab == 'appointments' %}
+      <div class="card">
+        <h3>Book New Appointment (No CSRF Validation)</h3>
+        <form method="post" action="/portal/appointments/create">
+          <label for="apptPat">Patient ID</label>
+          <input id="apptPat" name="patientId" type="text" value="{{ user.id }}" />
+
+          <label for="apptDate">Scheduled Date &amp; Time</label>
+          <input id="apptDate" name="scheduledAt" type="text" value="2026-11-20T10:00:00" />
+
+          <label for="apptReason">Reason for Visit</label>
+          <input id="apptReason" name="reason" type="text" placeholder="Appointment reason" required />
+
+          <button class="btn btn-primary" type="submit">Book Appointment</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>All Clinic Appointments</h3>
+        <table class="styled-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Patient</th>
+              <th>Doctor</th>
+              <th>Time</th>
+              <th>Reason</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in appointments %}
+            <tr>
+              <td>#{{ a.id }}</td>
+              <td>{{ a.patient_name }}</td>
+              <td>{{ a.doctor_name }}</td>
+              <td>{{ a.scheduled_at }}</td>
+              <td>{{ a.reason | safe }}</td>
+              <td><span class="badge">{{ a.status }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% elif active_tab == 'admin' and user.role == 'admin' %}
+      <div class="card">
+        <h3>User Accounts &amp; Unsalted MD5 Password Hashes (Data Exposure)</h3>
+        <p class="muted">Notice: Passwords are stored in weak, unsalted MD5 format. Easily crackable via rainbow tables!</p>
+        <table class="styled-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Full Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Weak MD5 Password Hash</th>
+              <th>Change Role (No CSRF)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in all_users %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td>{{ u.full_name }}</td>
+              <td>{{ u.email }}</td>
+              <td><strong>{{ u.role }}</strong></td>
+              <td><code>{{ u.password_hash }}</code></td>
+              <td>
+                <form method="post" action="/portal/admin/update-role" style="display: flex; gap: 0.25rem;">
+                  <input type="hidden" name="userId" value="{{ u.id }}" />
+                  <select name="newRole" style="margin: 0; padding: 0.2rem;">
+                    <option value="patient" {{ 'selected' if u.role == 'patient' else '' }}>patient</option>
+                    <option value="doctor" {{ 'selected' if u.role == 'doctor' else '' }}>doctor</option>
+                    <option value="staff" {{ 'selected' if u.role == 'staff' else '' }}>staff</option>
+                    <option value="admin" {{ 'selected' if u.role == 'admin' else '' }}>admin</option>
+                  </select>
+                  <button class="btn btn-outline btn-sm" type="submit">Update</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+    </section>
+    {% endif %}
+  </main>
+</body>
+</html>
+

@@ -1,0 +1,15 @@
+[project]
+name = "carevault"
+version = "1.0.0"
+description = "CareVault Insecure Educational Baseline Application (CW2 Vulnerability Baseline)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "Flask>=3.0.0",
+    "Werkzeug>=3.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider --assert=plain"
+

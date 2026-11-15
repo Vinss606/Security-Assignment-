@@ -1,4 +1,2 @@
-"""
-CareVault Insecure Routes Package
-"""
+"""CareVault Flask Blueprints Package."""
 

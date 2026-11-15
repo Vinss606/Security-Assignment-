@@ -1,13 +1,27 @@
 [project]
 name = "carevault"
 version = "1.0.0"
-description = "CareVault Insecure Educational Baseline Application (CW2 Vulnerability Baseline)"
+description = "CareVault Secure Clinical & Patient Records Portal (6000CMD / 6005CEM CW2)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "Flask>=3.0.0",
-    "Werkzeug>=3.0.0",
+    "Flask>=3.1.0",
+    "Werkzeug>=3.1.0",
+    "cryptography>=44.0.0",
+    "pydantic>=2.10.0",
+    "Pillow>=10.0.0",
+    "requests>=2.31.0",
 ]
+
+[tool.pyrefly]
+project-includes = ["carevault", "tests", "run.py", "manage.py"]
+search-path = ["."]
+fallback-python-interpreter-name = "python"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["carevault", "tests", "run.py", "manage.py"]
+ignore_missing_imports = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

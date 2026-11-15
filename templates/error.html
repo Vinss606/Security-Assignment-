@@ -3,38 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CareVault Insecure — {{ status_code or 'Error' }}</title>
+  <title>CareVault — Security Notice ({{ status_code }})</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div class="warning-strip">
-    &#x26A0;&#xFE0F; INSECURE EDUCATIONAL BASELINE &bull; HTTP PORT 5000 &bull; ALL SECURITY CONTROLS DISABLED
-  </div>
-
   <header class="topbar">
     <div class="brand">
-      <span class="shield-icon" aria-hidden="true">&#x26A0;&#xFE0F;</span>
+      <span class="shield-icon" aria-hidden="true">&#x1F6E1;</span>
       <div>
-        <h1>CareVault Insecure Educational Baseline</h1>
-        <p class="subtitle">Vulnerable Prototype &bull; For Security Comparison Only</p>
+        <h1>CareVault Clinical Portal (Python Edition)</h1>
+        <p class="subtitle">Zero-Trust RBAC &bull; Safe Error Handling &bull; Correlation-ID Verified</p>
       </div>
     </div>
   </header>
 
   <main class="container">
-    <div class="card" style="max-width: 600px; margin: 3rem auto; text-align: center;">
-      <h2 style="color: var(--danger); font-size: 1.8rem; margin-bottom: 0.5rem;">
-        HTTP {{ status_code or 500 }} &mdash; {{ error_title or 'Application Error' }}
-      </h2>
-      <div class="alert alert-error" role="alert" style="text-align: left; margin: 1.5rem 0;">
-        {{ message or 'An unexpected error occurred while processing your request.' }}
+    <div class="card mfa-card">
+      <h2>HTTP {{ status_code }} &mdash; {{ error_code }}</h2>
+      <div class="alert alert-error" role="alert">
+        {{ message }}
       </div>
-      <p class="muted" style="margin-bottom: 1.5rem;">
-        Note: Insecure mode runs with verbose debugging and lacks centralized error sanitization.
-      </p>
-      <a href="/" class="btn btn-primary" style="display: inline-block; text-decoration: none; padding: 0.75rem 1.5rem;">
-        &larr; Return to Insecure Portal Home
-      </a>
+      {% if correlation_id %}
+      <p class="muted">Support Reference ID: <code>{{ correlation_id }}</code></p>
+      {% endif %}
+      <a href="/" class="btn btn-primary link-btn">Return to CareVault Portal</a>
     </div>
   </main>
 </body>

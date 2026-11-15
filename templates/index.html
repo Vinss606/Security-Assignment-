@@ -3,27 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CareVault — Unsecured Baseline Clinical Portal (Vulnerable Edition)</title>
+  <title>CareVault — Secure Python Clinical &amp; Patient Portal</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div class="warning-strip">
-    ⚠️ UNSECURED BASELINE SYSTEM: INTENTIONALLY VULNERABLE TO SQL INJECTION, IDOR, XSS, MASS ASSIGNMENT &amp; PLAINTEXT HTTP
-  </div>
-
   <header class="topbar">
     <div class="brand">
-      <span class="shield-icon" aria-hidden="true">&#x26A0;&#xFE0F;</span>
+      <span class="shield-icon" aria-hidden="true">&#x1F6E1;</span>
       <div>
-        <h1>CareVault Baseline (Insecure Edition)</h1>
-        <p class="subtitle">Plaintext HTTP :5000 &bull; Unsalted MD5 &bull; No CSRF &bull; Raw SQL Concatenation &bull; Unescaped HTML (XSS)</p>
+        <h1>CareVault Clinical Portal (Python Edition)</h1>
+        <p class="subtitle">Zero-Trust RBAC &bull; Argon2id + TOTP MFA &bull; TLS 1.3 PKI Verified &bull; CSP <code>script-src 'none'</code></p>
       </div>
     </div>
 
     {% if user %}
     <div class="session-bar">
-      <span class="badge role-badge">{{ user.role | upper }} &bull; {{ user.full_name }}</span>
-      <form method="post" action="/portal/logout" class="inline-form" style="display:inline;">
+      <span class="badge role-badge">{{ user.role }} &bull; {{ user.fullName }}</span>
+      <a href="/?tab=mfa" class="btn btn-outline btn-sm link-btn">
+        {% if user.mfaEnabled %}2FA: Active{% else %}2FA: Setup{% endif %}
+      </a>
+      <form method="post" action="/portal/logout" class="inline-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
         <button class="btn btn-danger btn-sm" type="submit">Sign Out</button>
       </form>
     </div>
@@ -37,307 +37,439 @@
     </div>
     {% endif %}
 
-    <!-- Live Vulnerability Demonstration Panel -->
-    <section class="vuln-panel">
-      <h3>&#x1F47E; Interactive Vulnerability Demonstration Console (Viva &amp; Testing Helper)</h3>
-      <p class="muted" style="margin-bottom: 0.5rem;">
-        Click any attack scenario below to trigger or test live vulnerabilities against this unsecured baseline:
-      </p>
-      <div class="vuln-grid">
-        <div class="vuln-item">
-          <strong>1. SQL Injection Auth Bypass (CWE-89)</strong>
-          <p>Bypasses authentication without a password using <code>' OR '1'='1' --</code>.</p>
-          <a href="/?demo_sqli=1" class="btn btn-primary btn-sm full-width" onclick="var el = document.getElementById('loginEmail'); if (el) { el.value = '\' OR \'1\'=\'1\' --'; document.getElementById('loginPassword').value = 'any_password'; return false; } else { window.location.href = '/?demo_sqli=1'; return false; }">Auto-Fill SQLi Login</a>
-        </div>
-
-        <div class="vuln-item">
-          <strong>2. Horizontal IDOR (CWE-639 / BOLA)</strong>
-          <p>Access Patient #6's private psychiatric diagnosis regardless of who is signed in.</p>
-          <a href="/?tab=records&record_id=2" class="btn btn-secondary btn-sm full-width">View Record #2 (Daniel)</a>
-        </div>
-
-        <div class="vuln-item">
-          <strong>3. Stored XSS Demo (CWE-79)</strong>
-          <p>Injects an alert script into the diagnosis field rendered via unescaped HTML.</p>
-          <button class="btn btn-outline btn-sm full-width" onclick="alert('XSS Demo: In the diagnosis field, insert <script>alert(document.cookie)<\/script> to execute arbitrary JavaScript in the victim\'s browser!')">Explain Stored XSS</button>
-        </div>
-
-        <div class="vuln-item">
-          <strong>4. Session Cookie Theft (CWE-1004)</strong>
-          <p>Reads the session cookie directly via JavaScript because <code>HttpOnly</code> is missing.</p>
-          <button class="btn btn-outline btn-sm full-width" onclick="alert('Stolen Document Cookie:\n' + (document.cookie || 'No active cookie. Sign in first!'))">Inspect document.cookie</button>
-        </div>
-
-        <div class="vuln-item">
-          <strong>5. Verbose Traceback Leak (CWE-209)</strong>
-          <p>Triggers an unhandled exception leaking Python traceback &amp; local variables.</p>
-          <a href="/crash" target="_blank" class="btn btn-danger btn-sm full-width">Trigger /crash (Debug Stack Trace)</a>
-        </div>
-      </div>
-    </section>
-
-    {% if single_record %}
-    <!-- IDOR Direct Record Inspection View -->
-    <div class="card" style="border: 2px solid #ef4444; background: #fff5f5; margin-bottom: 2rem;">
-      <h3 style="color: #b91c1c;">&#x26A0;&#xFE0F; IDOR Exploit Result: Displaying Confidential Clinical Record #{{ single_record.id }}</h3>
-      <p class="muted">Notice: No ownership or authorization check performed! Unrestricted access granted to confidential PHI!</p>
-      <table class="styled-table">
-        <tr><th>Record ID</th><td>#{{ single_record.id }}</td></tr>
-        <tr><th>Patient Name</th><td><strong>{{ single_record.patient_name }} (Patient ID #{{ single_record.patient_id }})</strong></td></tr>
-        <tr><th>Attending Doctor</th><td>{{ single_record.doctor_name }}</td></tr>
-        <tr><th>Severity Level</th><td><span class="badge">{{ single_record.severity }}</span></td></tr>
-        <tr><th>Diagnosis (Raw HTML / XSS)</th><td>{{ single_record.diagnosis | safe }}</td></tr>
-        <tr><th>Prescription</th><td>{{ single_record.prescription | safe }}</td></tr>
-        <tr><th>Confidential Notes</th><td>{{ single_record.clinical_notes | safe }}</td></tr>
-        <tr><th>Created At</th><td>{{ single_record.created_at }}</td></tr>
-      </table>
-      <div style="margin-top: 1rem;">
-        <a href="{{ '/?tab=' + active_tab if user else '/' }}" class="btn btn-outline btn-sm">Close Record View</a>
-      </div>
-    </div>
-    {% endif %}
-
     {% if not user %}
-    <!-- Unauthenticated View: Login & Insecure Registration -->
+    <!-- Unauthenticated View: Login & Registration (100% Server-Side Python) -->
     <section class="auth-grid">
       <div class="card">
-        <h2>Sign In (Vulnerable to SQL Injection)</h2>
-        <p class="muted">Query executed: <code>SELECT * FROM users WHERE email = '{email}' AND password_hash = '{md5(password)}'</code></p>
+        {% if mfa_challenge_token %}
+        <h2>Step 2: Two-Factor Verification</h2>
+        <p class="muted">Primary credentials verified for <strong>{{ login_email }}</strong>. Enter your 6-digit RFC 6238 Authenticator code (passwords are never reflected in HTML).</p>
+        <form method="post" action="/portal/login/mfa">
+          <input type="hidden" name="mfaChallengeToken" value="{{ mfa_challenge_token }}" />
+          <div class="mfa-challenge-box">
+            <label for="loginTotp">Authenticator 6-Digit Code (RFC 6238 TOTP)</label>
+            <input id="loginTotp" name="totpCode" type="text" inputmode="numeric" maxlength="8"
+                   required autofocus placeholder="123456" />
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" type="submit">Verify 2FA &amp; Complete Sign In</button>
+            <a href="/" class="btn btn-outline link-btn">Cancel</a>
+          </div>
+        </form>
+        {% else %}
+        <h2>Secure Sign In</h2>
+        <p class="muted">Protected by PyCA OpenSSL Argon2id (64 MiB), constant-time anti-enumeration, and 5-attempt lockout.</p>
         <form method="post" action="/portal/login">
-          <label for="loginEmail">Email Address (Try typing: <code>' OR '1'='1' --</code>)</label>
-          <input id="loginEmail" name="email" type="text" required
+          <label for="loginEmail">Email Address</label>
+          <input id="loginEmail" name="email" type="email" autocomplete="username" required
                  value="{{ login_email }}" placeholder="dr.aisyah@carevault.local" />
 
           <label for="loginPassword">Password</label>
-          <input id="loginPassword" name="password" type="password" required
-                 value="{{ login_password }}" placeholder="Enter password" />
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required
+                 value="{{ login_password }}" placeholder="Enter your password" />
 
-          <button class="btn btn-primary full-width" type="submit">Sign In</button>
+          <button class="btn btn-primary full-width" type="submit">Authenticate Securely</button>
         </form>
+        {% endif %}
 
         <div class="demo-accounts">
-          <h3>Quick-Fill Demo Accounts</h3>
+          <h3>Quick-Fill RBAC Demo Accounts (Viva Helper)</h3>
           <div class="chip-row">
             {% for key, info in demo_accounts.items() %}
-            <a href="/?demo={{ key }}" class="chip {{ 'active' if selected_demo == key else '' }}">{{ info[2] }}</a>
+            <a href="/?demo={{ key }}" class="chip link-btn {{ 'active' if selected_demo == key else '' }}">{{ info[2] }}</a>
             {% endfor %}
           </div>
+          <p class="policy-hint">
+            Local Root CA Certificate: <a href="/certs/carevault-root-ca.crt" class="inline-link">Download carevault-root-ca.crt</a>
+          </p>
         </div>
       </div>
 
       <div class="card">
-        <h2>Registration (Vulnerable to Mass Assignment)</h2>
-        <p class="muted">Directly binds <code>role</code> from client form/JSON without schema validation.</p>
+        <h2>Patient Self-Registration</h2>
+        <p class="muted">Enforces NIST SP 800-63B password entropy &amp; assigns least-privilege <code>patient</code> role via Pydantic <code>extra='forbid'</code>.</p>
         <form method="post" action="/portal/register">
           <label for="regName">Full Legal Name</label>
-          <input id="regName" name="fullName" type="text" required placeholder="John Doe" />
+          <input id="regName" name="fullName" type="text" required value="{{ reg_name }}" placeholder="e.g. Siti Nurhaliza" />
 
           <label for="regEmail">Email Address</label>
-          <input id="regEmail" name="email" type="email" required placeholder="john@example.com" />
+          <input id="regEmail" name="email" type="email" required value="{{ reg_email }}" placeholder="siti@example.com" />
 
           <label for="regPhone">Contact Number</label>
-          <input id="regPhone" name="phone" type="tel" required placeholder="+6012-111-2233" />
+          <input id="regPhone" name="phone" type="tel" required value="{{ reg_phone }}" placeholder="+6012-555-8899" />
 
-          <label for="regRole">Role (Mass Assignment: Change to 'admin' to gain admin access!)</label>
-          <select id="regRole" name="role">
-            <option value="patient">patient (Standard Outpatient)</option>
-            <option value="doctor">doctor (Medical Clinician)</option>
-            <option value="staff">staff (Front-Desk Reception)</option>
-            <option value="admin">admin (Full System Administrator!)</option>
-          </select>
+          <label for="regPassword">Strong Password (Min 12 chars)</label>
+          <input id="regPassword" name="password" type="password" autocomplete="new-password" required
+                 placeholder="Min 12 chars, upper, lower, digit, symbol" />
+          <div class="policy-hint">Requires 12+ characters with uppercase, lowercase, number, and special symbol (must not contain your name or email).</div>
 
-          <label for="regPassword">Password (Weak: Accepts '123' or 1 character)</label>
-          <input id="regPassword" name="password" type="password" required placeholder="Weak passwords accepted" />
-
-          <button class="btn btn-secondary full-width" type="submit">Register Account (Vulnerable)</button>
+          <button class="btn btn-secondary full-width" type="submit">Create Patient Account</button>
         </form>
       </div>
     </section>
 
     {% else %}
-    <!-- Authenticated Insecure Workspace -->
+    <!-- Authenticated Clinical Workspace (100% Pure Python Jinja2 SSR) -->
     <section>
-      <div class="card" style="border-left: 4px solid #b91c1c;">
-        <h2>Signed in as: {{ user.full_name }} (Role: <code>{{ user.role }}</code>)</h2>
-        <p class="muted">Logged in via HTTP session. Session ID stored in plaintext cookie <code>cv_insecure_session</code> without <code>HttpOnly</code> or <code>Secure</code> flags.</p>
+      <div class="card polp-banner">
+        <div>
+          <h2>Signed in as {{ user.fullName }} ({{ user.role | upper }})</h2>
+          <p class="muted">Active Principle of Least Privilege (PoLP) Permissions Bound to Session:</p>
+          <div class="chip-row">
+            {% for perm in permissions %}
+            <span class="perm-chip">{{ perm }}</span>
+            {% endfor %}
+          </div>
+        </div>
       </div>
 
       <nav class="tabs" aria-label="Portal Navigation">
-        <a href="/?tab=records" class="tab-btn {{ 'active' if active_tab == 'records' else '' }}">Clinical Records (IDOR &amp; XSS)</a>
-        <a href="/?tab=appointments" class="tab-btn {{ 'active' if active_tab == 'appointments' else '' }}">Appointments (No CSRF)</a>
+        <a href="/?tab=records" class="tab-btn link-btn {{ 'active' if active_tab == 'records' else '' }}">Clinical Records</a>
+        <a href="/?tab=appointments" class="tab-btn link-btn {{ 'active' if active_tab == 'appointments' else '' }}">Appointments</a>
         {% if user.role == 'admin' %}
-        <a href="/?tab=admin" class="tab-btn {{ 'active' if active_tab == 'admin' else '' }}">Admin Database Users (MD5 Hashes)</a>
+        <a href="/?tab=admin" class="tab-btn link-btn {{ 'active' if active_tab == 'admin' else '' }}">Admin &amp; PKI Inspector</a>
         {% endif %}
+        <a href="/?tab=mfa" class="tab-btn link-btn {{ 'active' if active_tab == 'mfa' else '' }}">2FA Security</a>
       </nav>
 
       {% if active_tab == 'records' %}
-      <div class="card">
-        <h3>Search Records (Vulnerable to SQL Injection)</h3>
-        <form method="get" action="/">
-          <input type="hidden" name="tab" value="records" />
-          <label for="searchQ">Diagnosis Search Query</label>
-          <div style="display: flex; gap: 0.5rem;">
-            <input id="searchQ" name="q" type="text" value="{{ search_query }}" placeholder="e.g. Diabetes or try: ' UNION SELECT 99, 1, 1, email || ' | ' || password_hash, 'LEAK', 'HIGH', created_at FROM users --" />
-            <button class="btn btn-primary" type="submit">Search</button>
-          </div>
-        </form>
-      </div>
+      <!-- Tab 1: Clinical Records -->
+      <div>
+        {% if user.role == 'doctor' %}
+        <div class="card">
+          <h3>Author Clinical Diagnosis &amp; Prescription (Assigned Patients Only)</h3>
+          <form method="post" action="/portal/records/create">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+            <div class="form-row">
+              <div>
+                <label for="recPatientId">Assigned Patient</label>
+                <select id="recPatientId" name="patientId" required>
+                  {% if patients %}
+                    {% for pat in patients %}
+                      {% if rec_patient_id == pat.id %}
+                      <option value="{{ pat.id }}" selected>#{{ pat.id }} &mdash; {{ pat.full_name }} ({{ pat.email }})</option>
+                      {% else %}
+                      <option value="{{ pat.id }}">#{{ pat.id }} &mdash; {{ pat.full_name }} ({{ pat.email }})</option>
+                      {% endif %}
+                    {% endfor %}
+                  {% else %}
+                    <option value="">-- No patients currently assigned --</option>
+                  {% endif %}
+                </select>
+              </div>
+              <div>
+                <label for="recSeverity">Clinical Severity</label>
+                <select id="recSeverity" name="severity" required>
+                  {% for sev in ['LOW', 'MODERATE', 'HIGH', 'CRITICAL'] %}
+                    {% if rec_severity == sev %}
+                    <option value="{{ sev }}" selected>{{ sev }}</option>
+                    {% else %}
+                    <option value="{{ sev }}">{{ sev }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
 
-      <div class="card">
-        <h3>Create Clinical Record (Vulnerable to Stored XSS &amp; Missing CSRF)</h3>
-        <p class="muted">Notice: No CSRF token is required, and diagnosis/notes are saved without HTML entity encoding!</p>
-        <form method="post" action="/portal/records/create">
-          <label for="patSelect">Target Patient</label>
-          <select id="patSelect" name="patientId">
-            {% for pat in all_patients %}
-            <option value="{{ pat.id }}">#{{ pat.id }} &mdash; {{ pat.full_name }} ({{ pat.email }})</option>
-            {% endfor %}
-          </select>
+            <label for="recDiagnosis">Diagnosis</label>
+            <input id="recDiagnosis" name="diagnosis" type="text" required value="{{ rec_diagnosis }}" placeholder="e.g. Type 2 Diabetes Mellitus" />
 
-          <label for="recDiag">Diagnosis (Try typing: <code>&lt;script&gt;alert('Stored XSS!')&lt;/script&gt;</code>)</label>
-          <input id="recDiag" name="diagnosis" type="text" required placeholder="Clinical diagnosis" />
+            <label for="recPrescription">Prescription Plan</label>
+            <input id="recPrescription" name="prescription" type="text" required value="{{ rec_prescription }}" placeholder="e.g. Metformin 500mg BD" />
 
-          <label for="recPresc">Prescription</label>
-          <input id="recPresc" name="prescription" type="text" placeholder="Medication and dosage" />
+            <label for="recNotes">Confidential Clinical Notes</label>
+            <textarea id="recNotes" name="clinicalNotes" rows="3" required placeholder="Detailed clinical observations...">{{ rec_notes }}</textarea>
 
-          <label for="recNotes">Clinical Notes</label>
-          <textarea id="recNotes" name="clinicalNotes" rows="3" placeholder="Consultation notes"></textarea>
-
-          <label for="recSev">Severity</label>
-          <select id="recSev" name="severity">
-            <option value="LOW">LOW</option>
-            <option value="MODERATE">MODERATE</option>
-            <option value="HIGH">HIGH</option>
-            <option value="CRITICAL">CRITICAL</option>
-          </select>
-
-          <button class="btn btn-primary" type="submit">Save Record (Unsanitized)</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <h3>All Clinical Records in System (Overly Permissive)</h3>
-        <p class="muted">In a secure system, a patient only sees their own records. Here, all records can be queried!</p>
-        <table class="styled-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Patient</th>
-              <th>Doctor</th>
-              <th>Diagnosis (Rendered Raw | safe)</th>
-              <th>Severity</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in records %}
-            <tr>
-              <td>#{{ r.id }}</td>
-              <td>{{ r.patient_name }} (ID #{{ r.patient_id }})</td>
-              <td>{{ r.doctor_name }}</td>
-              <td>{{ r.diagnosis | safe }}</td>
-              <td><span class="badge">{{ r.severity }}</span></td>
-              <td>
-                <a href="/?tab=records&record_id={{ r.id }}" class="btn btn-secondary btn-sm">IDOR Inspect #{{ r.id }}</a>
-              </td>
-            </tr>
+            {% if patients %}
+            <button class="btn btn-primary" type="submit">Save Protected Clinical Record</button>
             {% else %}
-            <tr><td colspan="6" class="muted">No records found.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            <button class="btn btn-primary" type="submit" disabled>Save Protected Clinical Record</button>
+            {% endif %}
+          </form>
+        </div>
+        {% endif %}
+
+        <div class="card">
+          <div class="section-header">
+            <h3>Authorized Clinical Records</h3>
+            <form method="post" action="/portal/records/probe" class="idor-tester">
+              <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+              <input name="probeRecordId" type="number" min="1" value="{{ probe_record_id }}" aria-label="Record ID to probe" />
+              <button class="btn btn-outline btn-sm" type="submit">Test Object-Level Access (IDOR Probe)</button>
+            </form>
+          </div>
+
+          <div class="stack-list">
+            {% if user.role not in ['patient', 'doctor'] %}
+              <p class="muted">
+                Principle of Least Privilege / Separation of Duties: Role <code>{{ user.role }}</code> has no access to confidential clinical diagnoses.
+                Use the <strong>IDOR Probe</strong> form above to verify server-side RBAC enforcement (403 Forbidden + Correlation ID).
+              </p>
+            {% elif not records %}
+              <p class="muted">No clinical records found for your authorized scope.</p>
+            {% else %}
+              {% for rec in records %}
+              <div class="record-item">
+                <div class="record-meta">
+                  <span>Record #{{ rec.id }} | Patient: {{ rec.patient_name }} | Clinician: {{ rec.doctor_name }}</span>
+                  <span>Severity: <strong>{{ rec.severity }}</strong></span>
+                </div>
+                <strong>Diagnosis: {{ rec.diagnosis }}</strong>
+                <p>Prescription: {{ rec.prescription }}</p>
+                <p class="muted">Clinical Notes: {{ rec.clinical_notes }}</p>
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+        </div>
       </div>
 
       {% elif active_tab == 'appointments' %}
-      <div class="card">
-        <h3>Book New Appointment (No CSRF Validation)</h3>
-        <form method="post" action="/portal/appointments/create">
-          <label for="apptPat">Patient ID</label>
-          <input id="apptPat" name="patientId" type="text" value="{{ user.id }}" />
+      <!-- Tab 2: Appointments -->
+      <div>
+        {% if user.role in ['patient', 'staff'] %}
+        <div class="card">
+          <h3>Schedule Clinical Appointment</h3>
+          <form method="post" action="/portal/appointments/create">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+            <div class="form-row">
+              {% if user.role == 'staff' %}
+              <div>
+                <label for="apptPatientId">Patient Account</label>
+                <select id="apptPatientId" name="patientId" required>
+                  {% if not patients %}
+                  <option value="">-- No patients registered --</option>
+                  {% endif %}
+                  {% for pat in patients %}
+                    {% if appt_patient_id == pat.id %}
+                    <option value="{{ pat.id }}" selected>#{{ pat.id }} &mdash; {{ pat.full_name }} ({{ pat.email }})</option>
+                    {% else %}
+                    <option value="{{ pat.id }}">#{{ pat.id }} &mdash; {{ pat.full_name }} ({{ pat.email }})</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              {% endif %}
+              <div>
+                <label for="apptDoctorId">Attending Doctor</label>
+                <select id="apptDoctorId" name="doctorId" required>
+                  {% for doc in doctors %}
+                    {% if appt_doctor_id == doc.id %}
+                    <option value="{{ doc.id }}" selected>{{ doc.full_name }} ({{ doc.email }})</option>
+                    {% else %}
+                    <option value="{{ doc.id }}">{{ doc.full_name }} ({{ doc.email }})</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="apptDate">Date &amp; Time</label>
+                <input id="apptDate" name="scheduledAt" type="datetime-local" required value="{{ default_appt_dt }}" />
+              </div>
+            </div>
+            <label for="apptReason">Reason for Consultation</label>
+            <input id="apptReason" name="reason" type="text" required value="{{ appt_reason }}" placeholder="e.g. Annual health screening" />
+            {% if user.role == 'staff' and not patients %}
+            <button class="btn btn-primary" type="submit" disabled>Schedule Appointment</button>
+            {% else %}
+            <button class="btn btn-primary" type="submit">Schedule Appointment</button>
+            {% endif %}
+          </form>
+        </div>
+        {% endif %}
 
-          <label for="apptDate">Scheduled Date &amp; Time</label>
-          <input id="apptDate" name="scheduledAt" type="text" value="2026-11-20T10:00:00" />
-
-          <label for="apptReason">Reason for Visit</label>
-          <input id="apptReason" name="reason" type="text" placeholder="Appointment reason" required />
-
-          <button class="btn btn-primary" type="submit">Book Appointment</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <h3>All Clinic Appointments</h3>
-        <table class="styled-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Patient</th>
-              <th>Doctor</th>
-              <th>Time</th>
-              <th>Reason</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for a in appointments %}
-            <tr>
-              <td>#{{ a.id }}</td>
-              <td>{{ a.patient_name }}</td>
-              <td>{{ a.doctor_name }}</td>
-              <td>{{ a.scheduled_at }}</td>
-              <td>{{ a.reason | safe }}</td>
-              <td><span class="badge">{{ a.status }}</span></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="card">
+          <h3>Appointments Schedule</h3>
+          <div class="stack-list">
+            {% if user.role == 'admin' %}
+              <p class="muted">Separation of Duties: System Administrators do not manage clinical scheduling.</p>
+            {% elif not appointments %}
+              <p class="muted">No scheduled appointments found.</p>
+            {% else %}
+              {% for appt in appointments %}
+              <div class="record-item">
+                <div class="record-meta">
+                  <span>Appt #{{ appt.id }} | {{ appt.scheduled_at }} | Patient: {{ appt.patient_name }} | Doctor: {{ appt.doctor_name }}</span>
+                  <span>Status: <strong>{{ appt.status }}</strong></span>
+                </div>
+                <div>Reason: {{ appt.reason }}</div>
+                {% if user.role in ['staff', 'doctor'] and appt.status == 'SCHEDULED' %}
+                <div class="chip-row appt-actions">
+                  <form method="post" action="/portal/appointments/{{ appt.id }}/status" class="inline-form">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+                    <input type="hidden" name="status" value="COMPLETED" />
+                    <button type="submit" class="btn btn-secondary btn-sm">Mark Completed</button>
+                  </form>
+                  <form method="post" action="/portal/appointments/{{ appt.id }}/status" class="inline-form">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+                    <input type="hidden" name="status" value="CANCELLED" />
+                    <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+                  </form>
+                </div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+        </div>
       </div>
 
       {% elif active_tab == 'admin' and user.role == 'admin' %}
-      <div class="card">
-        <h3>User Accounts &amp; Unsalted MD5 Password Hashes (Data Exposure)</h3>
-        <p class="muted">Notice: Passwords are stored in weak, unsalted MD5 format. Easily crackable via rainbow tables!</p>
-        <table class="styled-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Full Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Weak MD5 Password Hash</th>
-              <th>Change Role (No CSRF)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for u in all_users %}
-            <tr>
-              <td>{{ u.id }}</td>
-              <td>{{ u.full_name }}</td>
-              <td>{{ u.email }}</td>
-              <td><strong>{{ u.role }}</strong></td>
-              <td><code>{{ u.password_hash }}</code></td>
-              <td>
-                <form method="post" action="/portal/admin/update-role" style="display: flex; gap: 0.25rem;">
-                  <input type="hidden" name="userId" value="{{ u.id }}" />
-                  <select name="newRole" style="margin: 0; padding: 0.2rem;">
-                    <option value="patient" {{ 'selected' if u.role == 'patient' else '' }}>patient</option>
-                    <option value="doctor" {{ 'selected' if u.role == 'doctor' else '' }}>doctor</option>
-                    <option value="staff" {{ 'selected' if u.role == 'staff' else '' }}>staff</option>
-                    <option value="admin" {{ 'selected' if u.role == 'admin' else '' }}>admin</option>
-                  </select>
-                  <button class="btn btn-outline btn-sm" type="submit">Update</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <!-- Tab 3: Security Admin & Live TLS/PKI Inspector -->
+      <div>
+        <div class="card">
+          <div class="section-header">
+            <h3>TLS 1.3 &amp; Two-Tier X.509 Certificate Chain Inspector (Req 3)</h3>
+            <a href="/?tab=admin&amp;rechecked=1" class="btn btn-outline btn-sm link-btn">Re-Validate Chain</a>
+          </div>
+          {% if tls_info %}
+          <div class="tls-grid">
+            <div class="tls-box">
+              <strong>Live Socket:</strong> Encrypted={{ tls_info.activeConnection.encrypted }} |
+              Protocol={{ tls_info.activeConnection.negotiatedProtocol }} |
+              Cipher={{ tls_info.activeConnection.cipherName }}
+            </div>
+            <div class="tls-box">
+              <strong>Server Cert:</strong> {{ tls_info.pkiValidation.serverCert.subjectAltName }} |
+              RSA {{ tls_info.pkiValidation.serverCert.modulusLength }}-bit |
+              Valid {{ tls_info.pkiValidation.serverCert.daysRemaining }} days
+            </div>
+            <div class="tls-box">
+              {% for chk in tls_info.pkiValidation.checks %}
+                [{% if chk.passed %}PASS{% else %}FAIL{% endif %}] {{ chk.check }}{% if not loop.last %} | {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h3>RBAC User Governance &amp; Lockout Management (Req 1)</h3>
+          <p class="muted">Updating any user's role or clinician assignment immediately revokes their active sessions to enforce new PoLP boundaries.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name &amp; Email</th>
+                  <th>Role &amp; Assigned Clinician (Patients)</th>
+                  <th>MFA</th>
+                  <th>Auth Status</th>
+                  <th>Security Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in admin_users %}
+                <tr>
+                  <td>#{{ u.id }}</td>
+                  <td>{{ u.full_name }} ({{ u.email }})</td>
+                  <td>
+                    {% if u.id == user.id %}
+                      <strong>ADMIN (Current Session)</strong>
+                    {% else %}
+                      <form method="post" action="/portal/admin/users/{{ u.id }}/role" class="inline-role-controls">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+                        <select name="role" aria-label="Role for {{ u.full_name }}">
+                          {% for r in ['patient', 'staff', 'doctor', 'admin'] %}
+                            {% if u.role == r %}
+                            <option value="{{ r }}" selected>{{ r | upper }}</option>
+                            {% else %}
+                            <option value="{{ r }}">{{ r | upper }}</option>
+                            {% endif %}
+                          {% endfor %}
+                        </select>
+                        <select name="assignedDoctorId" aria-label="Assigned clinician for {{ u.full_name }}">
+                          <option value="">-- Unassigned / N/A --</option>
+                          {% for doc in doctors %}
+                            {% if doc.id != u.id %}
+                              {% if u.assigned_doctor_id == doc.id %}
+                              <option value="{{ doc.id }}" selected>{{ doc.full_name }}</option>
+                              {% else %}
+                              <option value="{{ doc.id }}">{{ doc.full_name }}</option>
+                              {% endif %}
+                            {% endif %}
+                          {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                  <td>{% if u.mfa_enabled %}Enabled{% else %}Off{% endif %}</td>
+                  <td>
+                    {% if u.is_locked %}
+                      LOCKED ({{ u.failed_login_attempts }} fails)
+                    {% else %}
+                      Active ({{ u.failed_login_attempts }} fails)
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if u.is_locked or u.failed_login_attempts > 0 %}
+                      <form method="post" action="/portal/admin/users/{{ u.id }}/unlock" class="inline-form">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+                        <button type="submit" class="btn btn-secondary btn-sm">Reset Lockout</button>
+                      </form>
+                    {% else %}
+                      Protected
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {% elif active_tab == 'mfa' %}
+      <!-- Tab 4: RFC 6238 TOTP 2FA Provisioning & Management -->
+      <div class="card mfa-card">
+        <h3>Configure Authenticator 2FA (RFC 6238 TOTP &bull; AES-256-GCM at Rest)</h3>
+        <p class="muted">
+          Current Status:
+          <strong>{% if user.mfaEnabled %}ACTIVE{% else %}NOT ENABLED{% endif %}</strong>.
+          {% if user.mfaEnabled %}
+            Generating a new QR code stages a pending secret without overwriting your active Authenticator until you verify a 6-digit code.
+          {% else %}
+            Generate a provisioning QR code below, scan it with Google Authenticator, Microsoft Authenticator, or Authy, and verify a 6-digit code.
+          {% endif %}
+        </p>
+
+        <form method="post" action="/portal/mfa/setup" class="inline-form">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn btn-outline btn-sm">
+            {% if mfa_qr_data_url %}Regenerate Provisioning QR Code{% else %}Generate Provisioning QR Code{% endif %}
+          </button>
+        </form>
+
+        {% if mfa_qr_data_url %}
+        <div class="qr-box">
+          <img src="{{ mfa_qr_data_url }}" alt="TOTP Provisioning QR Code" />
+          <p class="mono-secret">Manual Base32 Secret Key: <strong>{{ mfa_manual_key }}</strong></p>
+        </div>
+
+        <form method="post" action="/portal/mfa/enable">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+          <label for="mfaConfirmCode">Enter 6-Digit Code from Authenticator App to Activate</label>
+          <input id="mfaConfirmCode" name="totpCode" type="text" inputmode="numeric" maxlength="8" required placeholder="123456" />
+          <button type="submit" class="btn btn-primary">Verify &amp; Activate MFA</button>
+        </form>
+        {% endif %}
+
+        {% if user.mfaEnabled %}
+        <div class="mfa-disable-box">
+          <hr class="divider" />
+          <form method="post" action="/portal/mfa/disable">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}" />
+            <label for="mfaDisablePassword">Confirm Account Password to Disable Active 2FA</label>
+            <input id="mfaDisablePassword" name="password" type="password" autocomplete="current-password" required placeholder="Current account password" />
+            <button type="submit" class="btn btn-danger btn-sm">Disable 2FA</button>
+          </form>
+        </div>
+        {% endif %}
       </div>
       {% endif %}
-
     </section>
     {% endif %}
   </main>
 </body>
 </html>
-

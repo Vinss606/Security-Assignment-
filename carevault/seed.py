@@ -1,15 +1,27 @@
 """
-Insecure Database Seeder (carevault/seed.py)
-Seeds the identical 6 RBAC demonstration accounts, clinical records, and appointments,
-using weak unsalted MD5 password hashes and plaintext clinical notes.
+CareVault Database Seeder (`carevault/seed.py`)
+Provisions the 6 RBAC demonstration accounts (Admin, 2 Doctors, Reception Staff, 2 Patients),
+initial clinical records, and scheduled appointments using Argon2id password hashes.
 """
 from __future__ import annotations
 
 import datetime as dt
+from typing import TypedDict
 
-from carevault.database import get_connection, init_db, weak_md5_hash
+from carevault.database import execute_write, get_connection, query_one
+from carevault.security.password import hash_password
 
-DEMO_ACCOUNTS = [
+
+class DemoAccount(TypedDict):
+    full_name: str
+    email: str
+    phone: str
+    password: str
+    role: str
+    assigned_doctor_email: str | None
+
+
+DEMO_ACCOUNTS: list[DemoAccount] = [
     {
         "full_name": "System Security Admin",
         "email": "admin@carevault.local",
@@ -61,110 +73,119 @@ DEMO_ACCOUNTS = [
 ]
 
 
-def seed_database(force_reset: bool = False, db_file: str | None = None) -> dict[str, int]:
-    conn = get_connection(db_file)
-    init_db(db_file)
-
+def seed_database(force_reset: bool = False) -> dict[str, int]:
+    conn = get_connection()
     if force_reset:
         conn.executescript(
             """
-            DELETE FROM clinical_records;
             DELETE FROM appointments;
+            DELETE FROM clinical_records;
             DELETE FROM sessions;
             DELETE FROM users;
-            DELETE FROM sqlite_sequence WHERE name IN ('users', 'clinical_records', 'appointments', 'sessions');
             """
         )
+        has_seq = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'"
+        ).fetchone()
+        if has_seq:
+            conn.execute("DELETE FROM sqlite_sequence;")
         conn.commit()
 
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users;")
-    if cur.fetchone()[0] > 0 and not force_reset:
-        return {"users": 6, "records": 2, "appointments": 2}
+    existing_count = query_one("SELECT COUNT(*) AS cnt FROM users")
+    if existing_count and existing_count["cnt"] > 0:
+        return {"users": existing_count["cnt"], "seeded": 0}
 
-    # Insert Users with weak MD5 passwords
-    user_id_map: dict[str, int] = {}
-    for acc in DEMO_ACCOUNTS:
-        pwd_hash = weak_md5_hash(acc["password"])
-        cur.execute(
-            """
-            INSERT INTO users (full_name, email, phone, password_hash, role)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (acc["full_name"], acc["email"], acc["phone"], pwd_hash, acc["role"]),
+    email_to_id: dict[str, int] = {}
+
+    for acct in DEMO_ACCOUNTS:
+        assigned_doc_id = (
+            email_to_id.get(acct["assigned_doctor_email"])
+            if acct["assigned_doctor_email"]
+            else None
         )
-        user_id_map[acc["email"]] = cur.lastrowid
+        pwd_hash = hash_password(acct["password"])
+        uid = execute_write(
+            """
+            INSERT INTO users (full_name, email, phone, password_hash, role, assigned_doctor_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                acct["full_name"],
+                acct["email"],
+                acct["phone"],
+                pwd_hash,
+                acct["role"],
+                assigned_doc_id,
+            ),
+        )
+        email_to_id[acct["email"]] = uid
 
-    # Update assigned doctors
-    for acc in DEMO_ACCOUNTS:
-        doc_email = acc["assigned_doctor_email"]
-        if doc_email and doc_email in user_id_map:
-            doc_id = user_id_map[doc_email]
-            u_id = user_id_map[acc["email"]]
-            cur.execute("UPDATE users SET assigned_doctor_id = ? WHERE id = ?", (doc_id, u_id))
+    amira_id = email_to_id["amira.patient@carevault.local"]
+    daniel_id = email_to_id["daniel.patient@carevault.local"]
+    aisyah_id = email_to_id["dr.aisyah@carevault.local"]
+    kenneth_id = email_to_id["dr.kenneth@carevault.local"]
 
-    # Insert Clinical Records (Unencrypted plaintext)
-    amira_id = user_id_map["amira.patient@carevault.local"]
-    daniel_id = user_id_map["daniel.patient@carevault.local"]
-    dr_aisyah_id = user_id_map["dr.aisyah@carevault.local"]
-    dr_kenneth_id = user_id_map["dr.kenneth@carevault.local"]
-
-    cur.execute(
+    execute_write(
         """
         INSERT INTO clinical_records (patient_id, doctor_id, diagnosis, prescription, clinical_notes, severity)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             amira_id,
-            dr_aisyah_id,
-            "Type 2 Diabetes Mellitus (Uncomplicated)",
-            "Metformin 500mg BD with meals; Lifestyle diet modification.",
-            "Patient reports steady fasting blood glucose. HbA1c 6.8%. Continue current regimen.",
+            aisyah_id,
+            "Essential Hypertension (Stage 1) - ICD-10 I10",
+            "Amlodipine 5mg PO once daily; Low-sodium DASH dietary regimen",
+            "Resting BP 144/92 mmHg across two visits. ECG normal sinus rhythm. Follow-up blood panel in 4 weeks.",
             "MODERATE",
         ),
     )
 
-    cur.execute(
+    execute_write(
         """
         INSERT INTO clinical_records (patient_id, doctor_id, diagnosis, prescription, clinical_notes, severity)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             daniel_id,
-            dr_kenneth_id,
-            "Major Depressive Disorder (Recurrent)",
-            "Escitalopram 10mg OD morning; Referral to outpatient CBT therapist.",
-            "Confidential psychiatric consultation notes. Patient experiencing sleep disturbance.",
-            "HIGH",
+            kenneth_id,
+            "Acute Allergic Rhinitis & Mild Bronchospasm",
+            "Cetirizine 10mg nocte + Salbutamol MDI 100mcg PRN",
+            "Triggered by seasonal dust exposure. SpO2 99% on room air. Chest auscultation clear post-bronchodilator.",
+            "LOW",
         ),
     )
 
-    # Insert Appointments
-    now = dt.datetime.now(dt.timezone.utc)
-    t1 = (now + dt.timedelta(days=2, hours=3)).strftime("%Y-%m-%dT10:00:00")
-    t2 = (now + dt.timedelta(days=5, hours=6)).strftime("%Y-%m-%dT14:30:00")
+    base_day = (dt.datetime.now(dt.UTC) + dt.timedelta(days=3)).strftime("%Y-%m-%d")
+    second_day = (dt.datetime.now(dt.UTC) + dt.timedelta(days=5)).strftime("%Y-%m-%d")
 
-    cur.execute(
+    execute_write(
         """
         INSERT INTO appointments (patient_id, doctor_id, scheduled_at, reason, status)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'SCHEDULED')
         """,
-        (amira_id, dr_aisyah_id, t1, "Routine HbA1c Blood Panel Follow-Up", "SCHEDULED"),
+        (
+            amira_id,
+            aisyah_id,
+            f"{base_day}T10:30",
+            "4-week antihypertensive titration & renal function review",
+        ),
     )
 
-    cur.execute(
+    execute_write(
         """
         INSERT INTO appointments (patient_id, doctor_id, scheduled_at, reason, status)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'SCHEDULED')
         """,
-        (daniel_id, dr_kenneth_id, t2, "Medication Review & Psychotherapy Check-In", "SCHEDULED"),
+        (
+            daniel_id,
+            kenneth_id,
+            f"{second_day}T14:00",
+            "Spirometry follow-up and allergy management review",
+        ),
     )
 
-    conn.commit()
-    print("[INSECURE SEED] Seeded 6 accounts (MD5), 2 records, and 2 appointments.")
-    return {"users": 6, "records": 2, "appointments": 2}
-
-
-if __name__ == "__main__":
-    seed_database(force_reset=True)
+    print(
+        f"[SEED] SUCCESS: Seeded {len(DEMO_ACCOUNTS)} RBAC accounts, 2 clinical records, and 2 appointments."
+    )
+    return {"users": len(DEMO_ACCOUNTS), "seeded": 1}
 

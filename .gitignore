@@ -1,16 +1,16 @@
-# Python bytecode
 __pycache__/
 *.py[cod]
-*.class
+.venv/
+venv/
 .pytest_cache/
-
-# Databases
+.ruff_cache/
+certs/*.key
+certs/*.crt
+certs/*.csr
+certs/*.srl
 data/*.db
-data/*.sqlite*
-*.db-shm
-*.db-wal
-
-# OS metadata
-.DS_Store
-Thumbs.db
-*.bat
+data/*.db-wal
+data/*.db-shm
+data/*.log
+data/*.jsonl
+.env

@@ -1,48 +1,47 @@
 """
-CareVault Insecure Application Factory (carevault/__init__.py)
-INTENTIONALLY VULNERABLE BASELINE:
-- Runs in DEBUG mode with interactive Werkzeug debugger enabled (CWE-209)
-- Omits all security headers: No CSP, No HSTS, No XFO, No nosniff (CWE-693)
-- Omits API rate limiting (CWE-770)
-- Omits request body size limits (CWE-400)
+CareVault Flask Application Factory (`carevault/__init__.py`)
+100% Pure-Python Clinical Portal (Server-Side Jinja2 UI + REST JSON APIs)
 """
 from __future__ import annotations
 
+import ssl
 import sys
 from pathlib import Path
-from flask import Flask, jsonify, request, render_template
 
+sys.dont_write_bytecode = True
+
+# Allow running `python carevault/__init__.py` directly from IDE "Run Python File" button
 _PKG_ROOT = Path(__file__).resolve().parent.parent
 if str(_PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(_PKG_ROOT))
 
-from carevault.config import ROOT_DIR, SECRET_KEY, DEBUG_MODE
-from carevault.database import init_db
-from carevault.seed import seed_database
-from carevault.routes.auth_routes import auth_bp
-from carevault.routes.record_routes import records_bp
-from carevault.routes.appointment_routes import appointments_bp
+from flask import Flask, Response, jsonify, request
+
+from carevault.config import settings
+from carevault.middleware.error_handler import register_error_handlers
+from carevault.middleware.rate_limiter import enforce_api_rate_limit
+from carevault.middleware.security_headers import register_security_headers
 from carevault.routes.admin_routes import admin_bp
+from carevault.routes.appointment_routes import appointments_bp
+from carevault.routes.auth_routes import auth_bp
 from carevault.routes.portal_routes import portal_bp
+from carevault.routes.record_routes import records_bp
 
 
-def create_insecure_app() -> Flask:
+def create_app() -> Flask:
     app = Flask(
         __name__,
-        template_folder=str(ROOT_DIR / "templates"),
-        static_folder=str(ROOT_DIR / "static"),
+        template_folder=str(settings.ROOT_DIR / "templates"),
+        static_folder=str(settings.ROOT_DIR / "static"),
         static_url_path="/static",
     )
 
-    app.config["SECRET_KEY"] = SECRET_KEY
-    app.config["DEBUG"] = DEBUG_MODE
+    # Strict 16 KB request body limit to prevent payload memory-exhaustion DoS
+    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
 
-    # VULNERABILITY: No MAX_CONTENT_LENGTH - allows unbounded payload memory exhaustion
-    # VULNERABILITY: No security headers registered - no CSP, no HSTS, no X-Frame-Options
-    # VULNERABILITY: No rate limiter middleware registered
-
-    init_db()
-    seed_database(force_reset=False)
+    register_security_headers(app)
+    register_error_handlers(app)
+    app.before_request(enforce_api_rate_limit)
 
     app.register_blueprint(portal_bp)
     app.register_blueprint(auth_bp)
@@ -51,30 +50,15 @@ def create_insecure_app() -> Flask:
     app.register_blueprint(admin_bp)
 
     @app.get("/api/health")
-    def health():
-        return jsonify({"status": "ok", "mode": "insecure_baseline", "tls": False, "port": 5000})
-
-    @app.errorhandler(404)
-    def handle_404(e):
-        if request.path.startswith("/api/"):
-            return jsonify({"error": "Not Found", "status_code": 404}), 404
-        return render_template(
-            "error.html",
-            status_code=404,
-            error_title="Page Not Found",
-            message=f"The requested path '{request.path}' was not found on this server.",
-        ), 404
-
-    @app.errorhandler(405)
-    def handle_405(e):
-        if request.path.startswith("/api/"):
-            return jsonify({"error": "Method Not Allowed", "status_code": 405}), 405
-        return render_template(
-            "error.html",
-            status_code=405,
-            error_title="Method Not Allowed",
-            message=f"The HTTP method '{request.method}' is not allowed for '{request.path}'.",
-        ), 405
+    def health_probe() -> Response:
+        raw_sock = request.environ.get("werkzeug.socket")
+        is_tls = isinstance(raw_sock, ssl.SSLSocket) or request.is_secure
+        return jsonify({"status": "ok", "tls": is_tls})
 
     return app
 
+
+if __name__ == "__main__":
+    from carevault.server import start_servers
+
+    start_servers()
